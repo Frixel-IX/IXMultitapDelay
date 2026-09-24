@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <JUCERPROJECT id="ScDX8e" name="IXMultitapDelay" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" pluginFormats="buildVST3">
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" pluginFormats="buildStandalone,buildVST3">
   <MAINGROUP id="YigY3Y" name="IXMultitapDelay">
     <GROUP id="{0C64C43C-4D72-C740-3206-8DABC1D71954}" name="Source">
       <FILE id="S1niLG" name="PluginProcessor.cpp" compile="1" resource="0"
