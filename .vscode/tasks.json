@@ -1,0 +1,24 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build JUCE VST3 Debug",
+            "type": "shell",
+            "command": "xcodebuild",
+            "args": [
+                "-project",
+                "${workspaceFolder}/Builds/MacOSX/IXMultitapDelay.xcodeproj",
+                "-scheme",
+                "IXMultitapDelay - VST3",
+                "-configuration",
+                "Debug",
+                "build"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
+        }
+    ]
+}
