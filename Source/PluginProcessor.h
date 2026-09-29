@@ -53,7 +53,36 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    juce::AudioProcessorValueTreeState& getAPVTS() noexcept
+    {
+        return apvts;
+    }
+
+
 private:
     //==============================================================================
+    
+    static juce::AudioProcessorValueTreeState::ParameterLayout 
+    createParameterLayout();
+
+    juce::AudioProcessorValueTreeState apvts;
+
+    static constexpr double maxDelayTimeSeconds = 2.0;
+
+    juce::AudioBuffer<float> delayBuffer;
+    int delayWritePosition = 0;
+    double currentSampleRate = 44100.0;
+
+    juce::SmoothedValue<float> smoothedDelaySamples;
+    juce::SmoothedValue<float> smoothedFeedback;
+    juce::SmoothedValue<float> smoothedDryGain;
+    juce::SmoothedValue<float> smoothedWetGain;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (IXMultitapDelayAudioProcessor)
+
+
+
+
+    
+
 };
