@@ -9,6 +9,8 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <array>
+#include <atomic>
 
 //==============================================================================
 /**
@@ -61,19 +63,89 @@ public:
 
 private:
     //==============================================================================
+
+    class DelayTap
+    {
+    public:
+        void prepare (double sampleRate,
+                      double smoothingTimeSeconds,
+                      float initialDelayTimeMs,
+                      float initialGainDb)
+        {
+            currentSampleRate = sampleRate;
+
+            smoothedDelaySamples.reset (sampleRate, smoothingTimeSeconds);
+            smoothedGain.reset (sampleRate, smoothingTimeSeconds);
+
+            smoothedDelaySamples.setCurrentAndTargetValue (
+                millisecondsToSamples (initialDelayTimeMs));
+
+            smoothedGain.setCurrentAndTargetValue (
+                juce::Decibels::decibelsToGain (initialGainDb, -60.0f));
+
+            advance();
+        }
+
+        void setTargets (float delayTimeMs, float gainDb)
+        {
+            smoothedDelaySamples.setTargetValue (
+                millisecondsToSamples (delayTimeMs));
+
+            smoothedGain.setTargetValue (
+                juce::Decibels::decibelsToGain (gainDb, -60.0f));
+        }
+
+        void advance() noexcept
+        {
+            currentDelaySamples = smoothedDelaySamples.getNextValue();
+            currentGain = smoothedGain.getNextValue();
+        }
+
+        float getDelaySamples() const noexcept
+        {
+            return currentDelaySamples;
+        }
+
+        float getGain() const noexcept
+        {
+            return currentGain;
+        }
+
+    private:
+        float millisecondsToSamples (float delayTimeMs) const noexcept
+        {
+            return delayTimeMs * 0.001f
+                * static_cast<float> (currentSampleRate);
+        }
+
+        double currentSampleRate = 44100.0;
+        juce::SmoothedValue<float> smoothedDelaySamples;
+        juce::SmoothedValue<float> smoothedGain;
+        float currentDelaySamples = 1.0f;
+        float currentGain = 0.0f;
+    };
+
+    static constexpr int maxNumTaps = 8;
     
     static juce::AudioProcessorValueTreeState::ParameterLayout 
     createParameterLayout();
 
     juce::AudioProcessorValueTreeState apvts;
 
+    std::array<DelayTap, maxNumTaps> taps;
+
+    std::atomic<float>* tapCountParameter = nullptr;
+    std::array<std::atomic<float>*, maxNumTaps> tapTimeParameters {};
+    std::array<std::atomic<float>*, maxNumTaps> tapGainParameters {};
+    std::atomic<float>* feedbackParameter = nullptr;
+    std::atomic<float>* dryGainParameter = nullptr;
+    std::atomic<float>* wetGainParameter = nullptr;
+
     static constexpr double maxDelayTimeSeconds = 2.0;
 
     juce::AudioBuffer<float> delayBuffer;
     int delayWritePosition = 0;
-    double currentSampleRate = 44100.0;
 
-    juce::SmoothedValue<float> smoothedDelaySamples;
     juce::SmoothedValue<float> smoothedFeedback;
     juce::SmoothedValue<float> smoothedDryGain;
     juce::SmoothedValue<float> smoothedWetGain;

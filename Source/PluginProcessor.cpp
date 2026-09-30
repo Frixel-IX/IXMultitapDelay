@@ -8,7 +8,16 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
-using namespace std;
+
+namespace
+{
+juce::String makeTapParameterId (int tapIndex, const char* suffix)
+{
+    return juce::String ("tap")
+        + juce::String (tapIndex + 1)
+        + suffix;
+}
+}
 
 //==============================================================================
 IXMultitapDelayAudioProcessor::IXMultitapDelayAudioProcessor()
@@ -27,6 +36,27 @@ IXMultitapDelayAudioProcessor::IXMultitapDelayAudioProcessor()
     : apvts (*this, nullptr, "PARAMETERS", createParameterLayout())
 #endif
 {
+    tapCountParameter = apvts.getRawParameterValue ("tapCount");
+    feedbackParameter = apvts.getRawParameterValue ("feedback");
+    dryGainParameter = apvts.getRawParameterValue ("dryVolDB");
+    wetGainParameter = apvts.getRawParameterValue ("wetVolDB");
+
+    jassert (tapCountParameter != nullptr);
+    jassert (feedbackParameter != nullptr);
+    jassert (dryGainParameter != nullptr);
+    jassert (wetGainParameter != nullptr);
+
+    for (int tapIndex = 0; tapIndex < maxNumTaps; ++tapIndex)
+    {
+        tapTimeParameters[tapIndex] = apvts.getRawParameterValue (
+            makeTapParameterId (tapIndex, "Time"));
+
+        tapGainParameters[tapIndex] = apvts.getRawParameterValue (
+            makeTapParameterId (tapIndex, "Gain"));
+
+        jassert (tapTimeParameters[tapIndex] != nullptr);
+        jassert (tapGainParameters[tapIndex] != nullptr);
+    }
 }
 //=========Declare Value Tree State=========
 
@@ -39,38 +69,54 @@ IXMultitapDelayAudioProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    layout.add (std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID { "delayTime", 1 },
-        "Delay Time",
-        juce::NormalisableRange<float> { 1.0f, 2000.0f, 1.0f },
-        400.0f,
-        "ms"
-    ));
+    layout.add (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { "tapCount", 1 },
+        "Tap Count",
+        1,
+        maxNumTaps,
+        2));
 
-    layout.add (std::make_unique<juce::AudioParameterFloat>(
+    for (int tapIndex = 0; tapIndex < maxNumTaps; ++tapIndex)
+    {
+        const auto tapNumber = juce::String (tapIndex + 1);
+        const float defaultTimeMs = 250.0f * static_cast<float> (tapIndex + 1);
+        const float defaultGainDb = -3.0f * static_cast<float> (tapIndex);
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { makeTapParameterId (tapIndex, "Time"), 1 },
+            "Tap " + tapNumber + " Time",
+            juce::NormalisableRange<float> { 1.0f, 2000.0f, 1.0f },
+            defaultTimeMs,
+            "ms"));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { makeTapParameterId (tapIndex, "Gain"), 1 },
+            "Tap " + tapNumber + " Gain",
+            juce::NormalisableRange<float> { -60.0f, 6.0f, 0.1f },
+            defaultGainDb,
+            "dB"));
+    }
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "feedback", 1 },
         "Feedback",
         juce::NormalisableRange<float> { 0.0f, 95.0f, 0.1f },
         30.0f,
-        "%"
-    ));
+        "%"));
 
-    layout.add (std::make_unique<juce::AudioParameterFloat>(
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "dryVolDB", 1 },
         "Dry Volume",
         juce::NormalisableRange<float> { -60.0f, 6.0f, 0.1f },
         0.0f,
-        "dB"
-    ));
+        "dB"));
 
-    layout.add (std::make_unique<juce::AudioParameterFloat>(
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "wetVolDB", 1 },
         "Wet Volume",
         juce::NormalisableRange<float> { -60.0f, 6.0f, 0.1f },
         -6.0f,
-        "dB"
-    ));
-
+        "dB"));
 
     return layout;
 }
@@ -141,10 +187,9 @@ void IXMultitapDelayAudioProcessor::changeProgramName (int index, const juce::St
 void IXMultitapDelayAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     juce::ignoreUnused (samplesPerBlock);
-    currentSampleRate = sampleRate;
 
     const int maximumDelaySamples =
-    static_cast<int> (
+        static_cast<int> (
             std::ceil (maxDelayTimeSeconds * sampleRate)
         ) + 1;
 
@@ -158,60 +203,31 @@ void IXMultitapDelayAudioProcessor::prepareToPlay (double sampleRate, int sample
 
     constexpr double smoothingTimeSeconds = 0.05;
 
-    smoothedDelaySamples.reset (
-    sampleRate,
-    smoothingTimeSeconds
-    );
+    for (int tapIndex = 0; tapIndex < maxNumTaps; ++tapIndex)
+    {
+        taps[tapIndex].prepare (
+            sampleRate,
+            smoothingTimeSeconds,
+            tapTimeParameters[tapIndex]->load(),
+            tapGainParameters[tapIndex]->load());
+    }
 
-    smoothedFeedback.reset (
-    sampleRate,
-    smoothingTimeSeconds
-    );
-
-    smoothedDryGain.reset (
-    sampleRate,
-    smoothingTimeSeconds
-    );
-
-    smoothedWetGain.reset (
-    sampleRate,
-    smoothingTimeSeconds
-    );
-
-    const float initialDelayTimeMs =
-        apvts.getRawParameterValue ("delayTime")->load();
-
-    const float initialFeedback =
-        apvts.getRawParameterValue ("feedback")->load() / 100.0f;
-
-    const float initialDryDb =
-        apvts.getRawParameterValue ("dryVolDB")->load();
-
-    const float initialWetDb =
-        apvts.getRawParameterValue ("wetVolDB")->load();
-
-        smoothedDelaySamples.setCurrentAndTargetValue (
-            initialDelayTimeMs * 0.001f
-            * static_cast<float> (sampleRate)
-        );
+    smoothedFeedback.reset (sampleRate, smoothingTimeSeconds);
+    smoothedDryGain.reset (sampleRate, smoothingTimeSeconds);
+    smoothedWetGain.reset (sampleRate, smoothingTimeSeconds);
 
     smoothedFeedback.setCurrentAndTargetValue (
-        initialFeedback
-    );
+        feedbackParameter->load() / 100.0f);
 
     smoothedDryGain.setCurrentAndTargetValue (
         juce::Decibels::decibelsToGain (
-            initialDryDb,
-            -60.0f
-        )
-    );
+            dryGainParameter->load(),
+            -60.0f));
 
     smoothedWetGain.setCurrentAndTargetValue (
         juce::Decibels::decibelsToGain (
-            initialWetDb,
-            -60.0f
-    )
-);
+            wetGainParameter->load(),
+            -60.0f));
 
 }
 
@@ -277,64 +293,40 @@ void IXMultitapDelayAudioProcessor::processBlock (
     if (delayBufferSize == 0)
         return;
 
-    // Read the latest parameter values once per block.
-    const float delayTimeMs =
-        apvts.getRawParameterValue ("delayTime")->load();
+    const int activeTapCount = juce::jlimit (
+        1,
+        maxNumTaps,
+        juce::roundToInt (tapCountParameter->load()));
 
-    const float feedback =
-        apvts.getRawParameterValue ("feedback")->load()
-        / 100.0f;
-
-    const float dryDb =
-        apvts.getRawParameterValue ("dryVolDB")->load();
-
-    const float wetDb =
-        apvts.getRawParameterValue ("wetVolDB")->load();
-
-    const float targetDelaySamples = juce::jlimit (
-        1.0f,
-        static_cast<float> (delayBufferSize - 1),
-        delayTimeMs * 0.001f
-            * static_cast<float> (currentSampleRate)
-    );
-
-    const float targetDryGain =
-        juce::Decibels::decibelsToGain (
-            dryDb,
-            -60.0f
-        );
-
-    const float targetWetGain =
-        juce::Decibels::decibelsToGain (
-            wetDb,
-            -60.0f
-        );
-
-    // Tell each smoother where it should gradually move.
-    smoothedDelaySamples.setTargetValue (
-        targetDelaySamples
-    );
+    for (int tapIndex = 0; tapIndex < maxNumTaps; ++tapIndex)
+    {
+        taps[tapIndex].setTargets (
+            tapTimeParameters[tapIndex]->load(),
+            tapGainParameters[tapIndex]->load());
+    }
 
     smoothedFeedback.setTargetValue (
-        feedback
-    );
+        feedbackParameter->load() / 100.0f);
 
     smoothedDryGain.setTargetValue (
-        targetDryGain
-    );
+        juce::Decibels::decibelsToGain (
+            dryGainParameter->load(),
+            -60.0f));
 
     smoothedWetGain.setTargetValue (
-        targetWetGain
-    );
+        juce::Decibels::decibelsToGain (
+            wetGainParameter->load(),
+            -60.0f));
+
+    std::array<int, maxNumTaps> readIndexA {};
+    std::array<int, maxNumTaps> readIndexB {};
+    std::array<float, maxNumTaps> readFraction {};
+    std::array<float, maxNumTaps> tapGain {};
 
     for (int sample = 0;
          sample < buffer.getNumSamples();
          ++sample)
     {
-        // Advance each smoother exactly once per sample.
-        const float currentDelaySamples =
-            smoothedDelaySamples.getNextValue();
-
         const float currentFeedback =
             smoothedFeedback.getNextValue();
 
@@ -343,24 +335,36 @@ void IXMultitapDelayAudioProcessor::processBlock (
 
         const float currentWetGain =
             smoothedWetGain.getNextValue();
+    //getting read & write pos for each tap
 
-        float readPosition =
-            static_cast<float> (delayWritePosition)
-            - currentDelaySamples;
+        for (int tapIndex = 0; tapIndex < maxNumTaps; ++tapIndex)
+            taps[tapIndex].advance();
 
-        if (readPosition < 0.0f)
-            readPosition +=
-                static_cast<float> (delayBufferSize);
+        for (int tapIndex = 0; tapIndex < activeTapCount; ++tapIndex)
+        {
+            const float delaySamples = juce::jlimit (
+                1.0f,
+                static_cast<float> (delayBufferSize - 1),
+                taps[tapIndex].getDelaySamples());
 
-        const int readIndexA =
-            static_cast<int> (floor (readPosition));
+            float readPosition =
+                static_cast<float> (delayWritePosition) - delaySamples;
 
-        const int readIndexB =
-            (readIndexA + 1) % delayBufferSize;
+            if (readPosition < 0.0f)
+                readPosition += static_cast<float> (delayBufferSize);
 
-        const float fraction =
-            readPosition
-            - static_cast<float> (readIndexA);
+            readIndexA[tapIndex] =
+                static_cast<int> (std::floor (readPosition));
+
+            readIndexB[tapIndex] =
+                (readIndexA[tapIndex] + 1) % delayBufferSize;
+
+            readFraction[tapIndex] =
+                readPosition - static_cast<float> (readIndexA[tapIndex]);
+
+            tapGain[tapIndex] = taps[tapIndex].getGain();
+        }
+        //actual processing
 
         for (int channel = 0;
              channel < totalNumInputChannels;
@@ -369,27 +373,32 @@ void IXMultitapDelayAudioProcessor::processBlock (
             const float inputSample =
                 buffer.getSample (channel, sample);
 
-            const float delayedSampleA =
-                delayBuffer.getSample (
-                    channel,
-                    readIndexA
-                );
+            float wetSample = 0.0f;
+            float feedbackSample = 0.0f;
 
-            const float delayedSampleB =
-                delayBuffer.getSample (
+            for (int tapIndex = 0; tapIndex < activeTapCount; ++tapIndex)
+            {
+                const float delayedSampleA = delayBuffer.getSample (
                     channel,
-                    readIndexB
-                );
+                    readIndexA[tapIndex]);
 
-            const float delayedSample =
-                delayedSampleA
-                + fraction
-                    * (delayedSampleB
-                       - delayedSampleA);
+                const float delayedSampleB = delayBuffer.getSample (
+                    channel,
+                    readIndexB[tapIndex]);
+
+                const float delayedSample = delayedSampleA
+                    + readFraction[tapIndex]
+                        * (delayedSampleB - delayedSampleA);
+
+                wetSample += delayedSample * tapGain[tapIndex];
+
+                if (tapIndex == 0)
+                    feedbackSample = delayedSample;
+            }
 
             const float outputSample =
                 currentDryGain * inputSample
-                + currentWetGain * delayedSample;
+                + currentWetGain * wetSample;
 
             buffer.setSample (
                 channel,
@@ -401,7 +410,7 @@ void IXMultitapDelayAudioProcessor::processBlock (
                 channel,
                 delayWritePosition,
                 inputSample
-                    + delayedSample
+                    + feedbackSample
                         * currentFeedback
             );
         }
