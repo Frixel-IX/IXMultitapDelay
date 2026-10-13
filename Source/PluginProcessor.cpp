@@ -94,9 +94,14 @@ IXMultitapDelayAudioProcessor::createParameterLayout()
 
     for (int tapIndex = 0; tapIndex < maxNumTaps; ++tapIndex)
     {
+        static constexpr std::array<int, maxNumTaps> defaultDivisionIndices {
+            4, 3, 9, 2, 8, 1, 7, 0
+        };
+
         const auto tapNumber = juce::String (tapIndex + 1);
         const float defaultTimeMs = 250.0f * static_cast<float> (tapIndex + 1);
-        const float defaultGainDb = -3.0f * static_cast<float> (tapIndex);
+        const float defaultGainDb = -6.0f
+            - 3.0f * static_cast<float> (tapIndex);
 
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { makeTapParameterId (tapIndex, "Time"), 1 },
@@ -108,7 +113,7 @@ IXMultitapDelayAudioProcessor::createParameterLayout()
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { makeTapParameterId (tapIndex, "Gain"), 1 },
             "Tap " + tapNumber + " Gain",
-            juce::NormalisableRange<float> { -60.0f, 6.0f, 0.1f },
+            juce::NormalisableRange<float> { -60.0f, 0.0f, 0.1f },
             defaultGainDb,
             "dB"));
 
@@ -118,7 +123,7 @@ IXMultitapDelayAudioProcessor::createParameterLayout()
             juce::StringArray { "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/64",
                                 "1/2.", "1/4.", "1/8.", "1/16.", "1/32.",
                                 "1/2T", "1/4T", "1/8T", "1/16T", "1/32T" },
-            2));
+            defaultDivisionIndices[static_cast<size_t> (tapIndex)]));
 
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { makeTapParameterId (tapIndex, "Humanize"), 1 },
@@ -139,7 +144,7 @@ IXMultitapDelayAudioProcessor::createParameterLayout()
         juce::ParameterID { "feedback", 1 },
         "Feedback",
         juce::NormalisableRange<float> { 0.0f, 95.0f, 0.1f },
-        30.0f,
+        0.0f,
         "%"));
 
     auto feedbackHighCutRange = juce::NormalisableRange<float> {
