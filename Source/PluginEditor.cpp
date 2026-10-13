@@ -38,13 +38,13 @@ juce::Colour tapColour (int tapIndex)
 {
     static const std::array<juce::Colour, numberOfTaps> colours {
         juce::Colour (0xff65aeb8),
-        juce::Colour (0xffc08b5c),
-        juce::Colour (0xff8d78b5),
-        juce::Colour (0xff86a866),
-        juce::Colour (0xffb96f88),
         juce::Colour (0xff668fbd),
-        juce::Colour (0xffb5a05d),
+        juce::Colour (0xff8d78b5),
         juce::Colour (0xffa66fa8)
+        juce::Colour (0xffb96f88),
+        juce::Colour (0xffc08b5c),
+        juce::Colour (0xffb5a05d),
+        juce::Colour (0xff86a866),
     };
 
     return colours[static_cast<size_t> (juce::jlimit (0, numberOfTaps - 1,
