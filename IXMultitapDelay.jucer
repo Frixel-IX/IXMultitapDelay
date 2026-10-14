@@ -12,6 +12,12 @@
             file="Source/PluginEditor.cpp"/>
       <FILE id="Jzcd5F" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
     </GROUP>
+    <GROUP id="{63FDDDCF-2DE4-4C13-B95D-23E1D09F680A}" name="Assets">
+      <FILE id="marchiveFont" name="Marchive.ttf" compile="0" resource="1"
+            file="Assets/Marchive.ttf"/>
+      <FILE id="marchiveLicense" name="Marchive-License.txt" compile="0" resource="0"
+            file="Assets/Marchive-License.txt"/>
+    </GROUP>
   </MAINGROUP>
   <MODULES>
     <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
