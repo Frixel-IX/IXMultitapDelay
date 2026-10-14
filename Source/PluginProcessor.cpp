@@ -343,8 +343,16 @@ void IXMultitapDelayAudioProcessor::prepareToPlay (double sampleRate, int sample
 
 void IXMultitapDelayAudioProcessor::releaseResources()
 {
-    // When playback stops, you can use this as an opportunity to free up any
-    // spare memory, etc.
+    delayBuffer.clear();
+    delayWritePosition =0;
+        feedbackFilterStates.fill (0.0f);
+    wetWaveformFifo.reset();
+
+    for (auto& channelLevels : tapVisualLevels)
+        for (auto& level : channelLevels)
+            level.store (0.0f, std::memory_order_relaxed);
+
+    
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
