@@ -5,6 +5,7 @@
 
 class DelayTimelineComponent;
 class TimeModeToggle;
+class TopControlsLookAndFeel;
 
 class IXMultitapDelayAudioProcessorEditor : public juce::AudioProcessorEditor
 {
@@ -18,10 +19,20 @@ public:
 private:
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     void configureLabel (juce::Label&, const juce::String&);
+    void savePreset();
+    void loadPreset();
+    juce::File getPresetDirectory() const;
 
     IXMultitapDelayAudioProcessor& audioProcessor;
+    std::unique_ptr<TopControlsLookAndFeel> topControlsLookAndFeel;
+    juce::Typeface::Ptr titleTypeface;
 
     juce::Label titleLabel;
+    juce::Label presetCaptionLabel;
+    juce::Label presetNameLabel;
+    juce::TextButton loadPresetButton;
+    juce::TextButton savePresetButton;
+    std::unique_ptr<juce::FileChooser> presetFileChooser;
     juce::Label tapCountLabel;
     juce::Label feedbackLabel;
     juce::Label feedbackHighCutLabel;

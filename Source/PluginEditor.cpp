@@ -40,7 +40,7 @@ juce::Colour tapColour (int tapIndex)
         juce::Colour (0xff65aeb8),
         juce::Colour (0xff668fbd),
         juce::Colour (0xff8d78b5),
-        juce::Colour (0xffa66fa8)
+        juce::Colour (0xffa66fa8),
         juce::Colour (0xffb96f88),
         juce::Colour (0xffc08b5c),
         juce::Colour (0xffb5a05d),
@@ -51,13 +51,109 @@ juce::Colour tapColour (int tapIndex)
                                                        tapIndex))];
 }
 
-void configureInspectorSlider (juce::Slider& slider, const juce::String& suffix)
+class TapInspectorLookAndFeel : public juce::LookAndFeel_V4
+{
+public:
+    TapInspectorLookAndFeel()
+    {
+        setColour (juce::PopupMenu::backgroundColourId,
+                   juce::Colour (0xff171b21));
+        setColour (juce::PopupMenu::textColourId,
+                   juce::Colour (0xffc5cad2));
+        setColour (juce::PopupMenu::highlightedBackgroundColourId,
+                   juce::Colour (0xff343a43));
+        setColour (juce::PopupMenu::highlightedTextColourId,
+                   juce::Colour (0xffeee8d8));
+    }
+
+    void drawLinearSlider (juce::Graphics& g,
+                           int x, int y, int width, int height,
+                           float sliderPos, float, float,
+                           juce::Slider::SliderStyle,
+                           juce::Slider& slider) override
+    {
+        const float centreY = static_cast<float> (y + height) * 0.5f;
+        const float startX = static_cast<float> (x) + 2.0f;
+        const float endX = static_cast<float> (x + width) - 2.0f;
+        const auto accent = slider.findColour (juce::Slider::trackColourId);
+
+        g.setColour (juce::Colour (0xff29313a));
+        g.drawLine (startX, centreY, endX, centreY, 5.0f);
+        g.setColour (accent.withAlpha (0.70f));
+        g.drawLine (startX, centreY, sliderPos, centreY, 5.0f);
+
+        g.setColour (accent.withAlpha (0.12f));
+        g.fillEllipse (sliderPos - 11.0f, centreY - 11.0f, 22.0f, 22.0f);
+        g.setColour (accent.brighter (0.24f));
+        g.fillEllipse (sliderPos - 6.0f, centreY - 6.0f, 12.0f, 12.0f);
+    }
+
+    void drawComboBox (juce::Graphics& g, int width, int height,
+                       bool, int, int, int, int,
+                       juce::ComboBox&) override
+    {
+        auto bounds = juce::Rectangle<float> (0.0f, 0.0f,
+                                               static_cast<float> (width),
+                                               static_cast<float> (height));
+        g.setColour (juce::Colour (0xff20262e));
+        g.fillRoundedRectangle (bounds, 5.0f);
+        g.setColour (juce::Colour (0xff3b444f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 5.0f, 1.0f);
+
+        juce::Path arrow;
+        const float centreY = bounds.getCentreY();
+        arrow.startNewSubPath (width - 25.0f, centreY - 3.0f);
+        arrow.lineTo (width - 18.0f, centreY + 3.0f);
+        arrow.lineTo (width - 11.0f, centreY - 3.0f);
+        g.setColour (juce::Colour (0xffc8cdd4));
+        g.strokePath (arrow, juce::PathStrokeType (2.0f,
+                                                   juce::PathStrokeType::curved,
+                                                   juce::PathStrokeType::rounded));
+    }
+
+    void drawCallOutBoxBackground (juce::CallOutBox& box,
+                                   juce::Graphics& g,
+                                   const juce::Path& path,
+                                   juce::Image& cachedImage) override
+    {
+        if (cachedImage.isNull())
+        {
+            cachedImage = juce::Image (juce::Image::ARGB,
+                                       box.getWidth(), box.getHeight(), true);
+            juce::Graphics shadowGraphics (cachedImage);
+            juce::DropShadow (juce::Colours::black.withAlpha (0.65f),
+                              12, { 0, 4 }).drawForPath (shadowGraphics, path);
+        }
+
+        g.drawImageAt (cachedImage, 0, 0);
+        g.setColour (juce::Colour (0xff151920));
+        g.fillPath (path);
+        g.setColour (juce::Colour (0xff343c47).withAlpha (0.85f));
+        g.strokePath (path, juce::PathStrokeType (1.0f));
+    }
+};
+
+TapInspectorLookAndFeel& tapInspectorLookAndFeel()
+{
+    static TapInspectorLookAndFeel lookAndFeel;
+    return lookAndFeel;
+}
+
+void configureInspectorSlider (juce::Slider& slider,
+                               const juce::String& suffix,
+                               juce::Colour accent)
 {
     slider.setSliderStyle (juce::Slider::LinearHorizontal);
     slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 76, 22);
     slider.setTextValueSuffix (suffix);
-    slider.setColour (juce::Slider::trackColourId, juce::Colour (0xff8f98a8));
-    slider.setColour (juce::Slider::thumbColourId, juce::Colour (0xffd7dbe2));
+    slider.setLookAndFeel (&tapInspectorLookAndFeel());
+    slider.setColour (juce::Slider::trackColourId, accent);
+    slider.setColour (juce::Slider::textBoxTextColourId,
+                      juce::Colour (0xffd8dce3));
+    slider.setColour (juce::Slider::textBoxBackgroundColourId,
+                      juce::Colour (0xff20262e));
+    slider.setColour (juce::Slider::textBoxOutlineColourId,
+                      juce::Colour (0xff3b444f));
 }
 
 class TapInspectorComponent : public juce::Component
@@ -76,9 +172,10 @@ public:
         title.setColour (juce::Label::textColourId, tapColour (tapIndex));
         addAndMakeVisible (title);
 
-        configureInspectorSlider (timeSlider, " ms");
-        configureInspectorSlider (humanizeSlider, " ms");
-        configureInspectorSlider (panSlider, " %");
+        const auto accent = tapColour (tapIndex);
+        configureInspectorSlider (timeSlider, " ms", accent);
+        configureInspectorSlider (humanizeSlider, " ms", accent);
+        configureInspectorSlider (panSlider, " %", accent);
 
         for (auto* slider : { &timeSlider, &humanizeSlider, &panSlider })
             addAndMakeVisible (*slider);
@@ -91,6 +188,13 @@ public:
             divisionBox.setItemEnabled (index + 1,
                                         divisionMs <= maximumDelayMs);
         }
+        divisionBox.setLookAndFeel (&tapInspectorLookAndFeel());
+        divisionBox.setColour (juce::ComboBox::textColourId,
+                               juce::Colour (0xffd8dce3));
+        divisionBox.setColour (juce::ComboBox::backgroundColourId,
+                               juce::Colour (0xff20262e));
+        divisionBox.setColour (juce::ComboBox::outlineColourId,
+                               juce::Colour (0xff3b444f));
         addAndMakeVisible (divisionBox);
 
         timeSlider.setVisible (! beatMode);
@@ -110,8 +214,8 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (juce::Colour (0xff1a1e25));
-        g.setColour (juce::Colour (0xffaab0ba));
+        g.fillAll (juce::Colour (0xff151920));
+        g.setColour (juce::Colour (0xff969da8));
         g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
 
         auto area = getLocalBounds().reduced (14);
@@ -229,6 +333,159 @@ private:
     juce::AudioProcessorValueTreeState& state;
 };
 
+class TopControlsLookAndFeel : public juce::LookAndFeel_V4
+{
+public:
+    void drawButtonBackground (juce::Graphics& g,
+                               juce::Button& button,
+                               const juce::Colour&,
+                               bool isMouseOverButton,
+                               bool isButtonDown) override
+    {
+        auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
+        auto background = juce::Colour (0xff20262e);
+        if (isButtonDown)
+            background = juce::Colour (0xff343a43);
+        else if (isMouseOverButton)
+            background = juce::Colour (0xff29313a);
+
+        g.setColour (background);
+        g.fillRoundedRectangle (bounds, 4.0f);
+        g.setColour (juce::Colour (0xff3b444f));
+        g.drawRoundedRectangle (bounds, 4.0f, 1.0f);
+    }
+
+    void drawButtonText (juce::Graphics& g,
+                         juce::TextButton& button,
+                         bool, bool) override
+    {
+        g.setColour (juce::Colour (0xffb8bec7));
+        g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+        g.drawText (button.getButtonText(), button.getLocalBounds(),
+                    juce::Justification::centred, false);
+    }
+
+    void drawRotarySlider (juce::Graphics& g,
+                           int x, int y, int width, int height,
+                           float sliderPosition,
+                           float rotaryStartAngle,
+                           float rotaryEndAngle,
+                           juce::Slider&) override
+    {
+        auto bounds = juce::Rectangle<float> (static_cast<float> (x),
+                                               static_cast<float> (y),
+                                               static_cast<float> (width),
+                                               static_cast<float> (height))
+                          .reduced (10.0f);
+        const float diameter = juce::jmin (bounds.getWidth(), bounds.getHeight());
+        bounds = bounds.withSizeKeepingCentre (diameter, diameter);
+        const float radius = diameter * 0.5f;
+        const float lineWidth = juce::jmax (2.0f, radius * 0.095f);
+        const float angle = rotaryStartAngle
+            + sliderPosition * (rotaryEndAngle - rotaryStartAngle);
+
+        g.setColour (juce::Colour (0xff11151b));
+        g.fillEllipse (bounds);
+        g.setColour (juce::Colour (0xff303743));
+        g.drawEllipse (bounds, 1.0f);
+
+        auto arcBounds = bounds.reduced (lineWidth * 1.3f);
+        juce::Path backgroundArc;
+        backgroundArc.addCentredArc (arcBounds.getCentreX(), arcBounds.getCentreY(),
+                                     arcBounds.getWidth() * 0.5f,
+                                     arcBounds.getHeight() * 0.5f,
+                                     0.0f, rotaryStartAngle, rotaryEndAngle, true);
+        g.setColour (juce::Colour (0xff39414d));
+        g.strokePath (backgroundArc,
+                      juce::PathStrokeType (lineWidth,
+                                            juce::PathStrokeType::curved,
+                                            juce::PathStrokeType::rounded));
+
+        juce::Path valueArc;
+        valueArc.addCentredArc (arcBounds.getCentreX(), arcBounds.getCentreY(),
+                                arcBounds.getWidth() * 0.5f,
+                                arcBounds.getHeight() * 0.5f,
+                                0.0f, rotaryStartAngle, angle, true);
+        g.setColour (juce::Colour (0xffb7a36e));
+        g.strokePath (valueArc,
+                      juce::PathStrokeType (lineWidth,
+                                            juce::PathStrokeType::curved,
+                                            juce::PathStrokeType::rounded));
+
+        juce::Path pointer;
+        pointer.addRoundedRectangle (-1.5f, -radius * 0.60f,
+                                     3.0f, radius * 0.34f, 1.5f);
+        g.setColour (juce::Colour (0xffe0d3ad));
+        g.fillPath (pointer, juce::AffineTransform::rotation (angle)
+                                 .translated (bounds.getCentreX(),
+                                              bounds.getCentreY()));
+        g.setColour (juce::Colour (0xff252b34));
+        g.fillEllipse (bounds.withSizeKeepingCentre (radius * 0.34f,
+                                                     radius * 0.34f));
+    }
+
+    void drawLinearSlider (juce::Graphics& g,
+                           int x, int y, int width, int height,
+                           float, float, float,
+                           juce::Slider::SliderStyle style,
+                           juce::Slider& slider) override
+    {
+        if (slider.getName() != "tapCountBar")
+        {
+            juce::LookAndFeel_V4::drawLinearSlider (
+                g, x, y, width, height, 0.0f, 0.0f, 0.0f, style, slider);
+            return;
+        }
+
+        auto bounds = juce::Rectangle<float> (static_cast<float> (x),
+                                               static_cast<float> (y),
+                                               static_cast<float> (width),
+                                               static_cast<float> (height))
+                          .reduced (7.0f, 6.0f);
+        constexpr int steps = 8;
+        const int selectedStep = juce::jlimit (1, steps,
+                                               juce::roundToInt (slider.getValue()));
+        const float trackY = bounds.getY() + 27.0f;
+        const float trackStart = bounds.getX() + 4.0f;
+        const float trackEnd = bounds.getRight() - 4.0f;
+        const float stepWidth = (trackEnd - trackStart)
+            / static_cast<float> (steps - 1);
+        const float thumbX = trackStart
+            + static_cast<float> (selectedStep - 1) * stepWidth;
+
+        g.setColour (juce::Colour (0xff353d48));
+        g.drawLine (trackStart, trackY, trackEnd, trackY, 5.0f);
+        g.setColour (juce::Colour (0xffb7a36e));
+        g.drawLine (trackStart, trackY, thumbX, trackY, 5.0f);
+
+        for (int step = 0; step < steps; ++step)
+        {
+            const float tickX = trackStart + static_cast<float> (step) * stepWidth;
+            const bool passed = step < selectedStep;
+            g.setColour (passed ? juce::Colour (0xffb7a36e)
+                                : juce::Colour (0xff4a5360));
+            g.fillEllipse (tickX - 2.75f, trackY - 2.75f, 5.5f, 5.5f);
+        }
+
+        auto thumb = juce::Rectangle<float> (thumbX - 8.5f, trackY - 13.0f,
+                                              17.0f, 26.0f);
+        g.setColour (juce::Colour (0xffd6c79f).withAlpha (0.16f));
+        g.fillRoundedRectangle (thumb.expanded (4.0f), 5.0f);
+        g.setColour (juce::Colour (0xffc7b581));
+        g.fillRoundedRectangle (thumb, 3.0f);
+        g.setColour (juce::Colour (0xff201f1a));
+        g.drawVerticalLine (juce::roundToInt (thumbX),
+                            thumb.getY() + 5.0f, thumb.getBottom() - 5.0f);
+
+        g.setColour (juce::Colour (0xffcbd0d8));
+        g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        g.drawText (juce::String (selectedStep) + " / 8",
+                    juce::Rectangle<float> (bounds.getX(), trackY + 17.0f,
+                                            bounds.getWidth(), 18.0f),
+                    juce::Justification::centred);
+    }
+};
+
 class DelayTimelineComponent : public juce::Component,
                                private juce::Timer
 {
@@ -249,10 +506,11 @@ public:
         auto titleArea = getLocalBounds().reduced (18).removeFromTop (30);
         g.setColour (juce::Colour (0xffd7dbe2));
         g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
-        g.drawText (isBeatMode() ? "BEAT GRID" : "TIME (MS)", titleArea,
+        g.drawText ("TAP LAYOUT", titleArea,
                     juce::Justification::centredLeft);
 
         auto track = getTrackBounds();
+        auto envelopeTitle = getEnvelopeTitleBounds();
         auto envelope = getEnvelopeBounds();
         g.setColour (juce::Colour (0xff101319));
         g.fillRoundedRectangle (track, 7.0f);
@@ -279,6 +537,11 @@ public:
         const int activeTaps = getActiveTapCount();
         for (int tapIndex = 0; tapIndex < activeTaps; ++tapIndex)
             drawTap (g, track, tapIndex);
+
+        g.setColour (juce::Colour (0xffd7dbe2));
+        g.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+        g.drawText ("GAIN ENVELOPE", envelopeTitle,
+                    juce::Justification::centredLeft);
 
         drawGainEnvelope (g, envelope, activeTaps);
         drawTimelineLabels (g, envelope);
@@ -383,9 +646,26 @@ private:
         auto bounds = getLocalBounds().reduced (18);
         bounds.removeFromTop (38);
         bounds.removeFromBottom (48);
-        const int envelopeHeight = bounds.getHeight() / 3;
-        bounds.removeFromBottom (envelopeHeight + 10);
+        constexpr int envelopeTitleHeight = 30;
+        constexpr int sectionGap = 6;
+        const int envelopeHeight = (bounds.getHeight()
+                                    - envelopeTitleHeight - sectionGap) / 3;
+        bounds.removeFromBottom (envelopeHeight
+                                 + sectionGap + envelopeTitleHeight);
         return bounds.toFloat();
+    }
+
+    juce::Rectangle<float> getEnvelopeTitleBounds() const
+    {
+        auto bounds = getLocalBounds().reduced (18);
+        bounds.removeFromTop (38);
+        bounds.removeFromBottom (48);
+        constexpr int envelopeTitleHeight = 30;
+        constexpr int sectionGap = 6;
+        const int envelopeHeight = (bounds.getHeight()
+                                    - envelopeTitleHeight - sectionGap) / 3;
+        bounds.removeFromBottom (envelopeHeight + sectionGap);
+        return bounds.removeFromBottom (envelopeTitleHeight).toFloat();
     }
 
     juce::Rectangle<float> getEnvelopeBounds() const
@@ -393,7 +673,10 @@ private:
         auto bounds = getLocalBounds().reduced (18);
         bounds.removeFromTop (38);
         bounds.removeFromBottom (48);
-        const int envelopeHeight = bounds.getHeight() / 3;
+        constexpr int envelopeTitleHeight = 30;
+        constexpr int sectionGap = 6;
+        const int envelopeHeight = (bounds.getHeight()
+                                    - envelopeTitleHeight - sectionGap) / 3;
         return bounds.removeFromBottom (envelopeHeight).toFloat();
     }
 
@@ -446,7 +729,7 @@ private:
         const float gainDb = state.getRawParameterValue (
             tapParameterId (tapIndex, "Gain"))->load();
         const float gainAmount = juce::jlimit (0.0f, 1.0f,
-                                               (gainDb + 60.0f) / 60.0f);
+                                               (gainDb + 24.0f) / 24.0f);
         const float diameter = 11.0f + 7.0f * gainAmount;
         const float y = track.getCentreY()
             + pan * track.getHeight() * 0.30f;
@@ -459,8 +742,8 @@ private:
                       juce::Rectangle<float> envelope) const
     {
         const auto range = envelope.reduced (0.0f, 12.0f);
-        return juce::jmap (juce::jlimit (-60.0f, 0.0f, gainDb),
-                           0.0f, -60.0f,
+        return juce::jmap (juce::jlimit (-24.0f, 0.0f, gainDb),
+                           0.0f, -24.0f,
                            range.getY(), range.getBottom());
     }
 
@@ -470,7 +753,7 @@ private:
         const auto range = envelope.reduced (0.0f, 12.0f);
         return juce::jmap (juce::jlimit (range.getY(), range.getBottom(), y),
                            range.getY(), range.getBottom(),
-                           0.0f, -60.0f);
+                           0.0f, -24.0f);
     }
 
     juce::Rectangle<float> gainPointBounds (int tapIndex) const
@@ -532,7 +815,10 @@ private:
         const float gainDb = state.getRawParameterValue (
             tapParameterId (tapIndex, "Gain"))->load();
         const float gainAmount = juce::jlimit (0.0f, 1.0f,
-                                               (gainDb + 60.0f) / 60.0f);
+                                               (gainDb + 24.0f) / 24.0f);
+        const float leftEnergy = visualTapLevels[0][static_cast<size_t> (tapIndex)];
+        const float rightEnergy = visualTapLevels[1][static_cast<size_t> (tapIndex)];
+        const float tapEnergy = juce::jmax (leftEnergy, rightEnergy);
 
         if (humanizeMs > 0.0f)
         {
@@ -554,10 +840,29 @@ private:
         g.drawLine (node.getCentreX(), track.getY() + 5.0f,
                     node.getCentreX(), track.getBottom() - 5.0f, 2.0f);
 
-        g.setColour (colour.withAlpha (0.05f));
-        g.fillEllipse (node.expanded (16.0f));
-        g.setColour (colour.withAlpha (0.11f));
-        g.fillEllipse (node.expanded (9.0f));
+        // Audio energy blooms outwards from the stem. The upper and lower
+        // halves respond independently to the left and right wet channels.
+        g.setColour (colour.withAlpha (leftEnergy * 0.10f));
+        g.drawLine (node.getCentreX(), track.getY() + 5.0f,
+                    node.getCentreX(), track.getCentreY(),
+                    8.0f + leftEnergy * 16.0f);
+        g.setColour (colour.withAlpha (leftEnergy * 0.24f));
+        g.drawLine (node.getCentreX(), track.getY() + 5.0f,
+                    node.getCentreX(), track.getCentreY(),
+                    4.0f + leftEnergy * 8.0f);
+        g.setColour (colour.withAlpha (rightEnergy * 0.10f));
+        g.drawLine (node.getCentreX(), track.getCentreY(),
+                    node.getCentreX(), track.getBottom() - 5.0f,
+                    8.0f + rightEnergy * 16.0f);
+        g.setColour (colour.withAlpha (rightEnergy * 0.24f));
+        g.drawLine (node.getCentreX(), track.getCentreY(),
+                    node.getCentreX(), track.getBottom() - 5.0f,
+                    4.0f + rightEnergy * 8.0f);
+
+        g.setColour (colour.withAlpha (0.05f + tapEnergy * 0.20f));
+        g.fillEllipse (node.expanded (16.0f + tapEnergy * 16.0f));
+        g.setColour (colour.withAlpha (0.11f + tapEnergy * 0.22f));
+        g.fillEllipse (node.expanded (9.0f + tapEnergy * 8.0f));
         g.setColour (colour.withAlpha (0.32f));
         g.fillEllipse (node.expanded (4.0f));
         g.setColour (colour);
@@ -596,8 +901,10 @@ private:
                            juce::Rectangle<float> envelope,
                            int activeTaps)
     {
-        static constexpr std::array<float, 6> gainMarks {
-            0.0f, -12.0f, -24.0f, -36.0f, -48.0f, -60.0f
+        drawWetWaveform (g, envelope);
+
+        static constexpr std::array<float, 5> gainMarks {
+            0.0f, -6.0f, -12.0f, -18.0f, -24.0f
         };
 
         g.setFont (juce::FontOptions (9.5f));
@@ -614,11 +921,6 @@ private:
                                                 y - 7.0f, 28.0f, 14.0f),
                         juce::Justification::centredLeft);
         }
-
-        g.setColour (juce::Colour (0xff8c939e));
-        g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-        g.drawText ("GAIN ENV", envelope.reduced (8.0f, 5.0f),
-                    juce::Justification::topRight);
 
         std::vector<int> tapOrder;
         tapOrder.reserve (static_cast<size_t> (activeTaps));
@@ -670,6 +972,43 @@ private:
             g.drawText (juce::String (tapIndex + 1), point,
                         juce::Justification::centred);
         }
+    }
+
+    void drawWetWaveform (juce::Graphics& g,
+                          juce::Rectangle<float> envelope)
+    {
+        const float centreY = envelope.getCentreY();
+        const float amplitude = envelope.getHeight() * 0.34f;
+        juce::Path waveform;
+
+        for (size_t sampleIndex = 0;
+             sampleIndex < wetWaveformHistory.size();
+             ++sampleIndex)
+        {
+            const float normalisedX = static_cast<float> (sampleIndex)
+                / static_cast<float> (wetWaveformHistory.size() - 1);
+            const float x = envelope.getX()
+                + normalisedX * envelope.getWidth();
+            const float visibleSample = std::tanh (
+                wetWaveformHistory[sampleIndex] * 3.0f);
+            const float y = centreY - visibleSample * amplitude;
+
+            if (sampleIndex == 0)
+                waveform.startNewSubPath (x, y);
+            else
+                waveform.lineTo (x, y);
+        }
+
+        g.setColour (juce::Colour (0xff68a6ad).withAlpha (0.09f));
+        g.strokePath (waveform,
+                      juce::PathStrokeType (5.0f,
+                                            juce::PathStrokeType::curved,
+                                            juce::PathStrokeType::rounded));
+        g.setColour (juce::Colour (0xff8ab9be).withAlpha (0.46f));
+        g.strokePath (waveform,
+                      juce::PathStrokeType (1.25f,
+                                            juce::PathStrokeType::curved,
+                                            juce::PathStrokeType::rounded));
     }
 
     void drawTimelineLabels (juce::Graphics& g,
@@ -839,12 +1178,44 @@ private:
 
         const auto anchor = parent->getLocalArea (
             this, nodeBounds (tapIndex).expanded (5.0f).toNearestInt());
-        juce::CallOutBox::launchAsynchronously (
+        auto& callout = juce::CallOutBox::launchAsynchronously (
             std::move (inspector), anchor, parent);
+        callout.setLookAndFeel (&tapInspectorLookAndFeel());
     }
 
     void timerCallback() override
     {
+        for (int channel = 0; channel < 2; ++channel)
+        {
+            for (int tapIndex = 0; tapIndex < numberOfTaps; ++tapIndex)
+            {
+                const float incoming = std::sqrt (juce::jlimit (
+                    0.0f, 1.0f,
+                    processor.consumeTapVisualLevel (tapIndex, channel)));
+                auto& displayed = visualTapLevels[static_cast<size_t> (channel)]
+                                                 [static_cast<size_t> (tapIndex)];
+                displayed = juce::jmax (incoming, displayed * 0.80f);
+            }
+        }
+
+        std::array<float, 256> incomingWaveform {};
+        const int received = processor.pullWetWaveformSamples (
+            incomingWaveform.data(),
+            static_cast<int> (incomingWaveform.size()));
+
+        for (auto& sample : wetWaveformHistory)
+            sample *= 0.96f;
+
+        if (received > 0)
+        {
+            const size_t sampleCount = static_cast<size_t> (received);
+            std::move (wetWaveformHistory.begin() + sampleCount,
+                       wetWaveformHistory.end(),
+                       wetWaveformHistory.begin());
+            std::copy_n (incomingWaveform.begin(), received,
+                         wetWaveformHistory.end() - received);
+        }
+
         repaint();
     }
 
@@ -857,6 +1228,8 @@ private:
     bool panDragEngaged = false;
     juce::Point<float> dragStartPosition;
     float dragStartPan = 0.0f;
+    std::array<std::array<float, numberOfTaps>, 2> visualTapLevels {};
+    std::array<float, 256> wetWaveformHistory {};
 };
 
 IXMultitapDelayAudioProcessorEditor::IXMultitapDelayAudioProcessorEditor (
@@ -864,21 +1237,62 @@ IXMultitapDelayAudioProcessorEditor::IXMultitapDelayAudioProcessorEditor (
     : AudioProcessorEditor (&processor), audioProcessor (processor)
 {
     setOpaque (true);
+    topControlsLookAndFeel = std::make_unique<TopControlsLookAndFeel>();
+
+    titleTypeface = juce::Typeface::createSystemTypefaceFor (
+        BinaryData::Marchive_ttf,
+        static_cast<size_t> (BinaryData::Marchive_ttfSize));
 
     titleLabel.setText ("IX MULTITAP DELAY", juce::dontSendNotification);
-    titleLabel.setFont (juce::FontOptions (23.0f, juce::Font::bold));
+    auto titleFont = juce::Font {
+        juce::FontOptions (titleTypeface).withHeight (32.0f)
+    };
+    titleFont.setExtraKerningFactor (0.025f);
+    titleLabel.setFont (titleFont);
     titleLabel.setColour (juce::Label::textColourId, juce::Colour (0xffd2b66f));
     addAndMakeVisible (titleLabel);
 
-    configureLabel (tapCountLabel, "TAPS");
+    presetCaptionLabel.setText ("PRESET", juce::dontSendNotification);
+    presetCaptionLabel.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+    presetCaptionLabel.setColour (juce::Label::textColourId,
+                                  juce::Colour (0xff747d89));
+    addAndMakeVisible (presetCaptionLabel);
+
+    presetNameLabel.setText ("Default", juce::dontSendNotification);
+    presetNameLabel.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+    presetNameLabel.setColour (juce::Label::textColourId,
+                               juce::Colour (0xffd0c39d));
+    presetNameLabel.setColour (juce::Label::backgroundColourId,
+                               juce::Colour (0xff151920));
+    presetNameLabel.setColour (juce::Label::outlineColourId,
+                               juce::Colour (0xff2c333e));
+    presetNameLabel.setJustificationType (juce::Justification::centredLeft);
+    presetNameLabel.setBorderSize (juce::BorderSize<int> (0, 8, 0, 5));
+    addAndMakeVisible (presetNameLabel);
+
+    for (auto* button : { &loadPresetButton, &savePresetButton })
+    {
+        button->setLookAndFeel (topControlsLookAndFeel.get());
+        button->setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        addAndMakeVisible (*button);
+    }
+    loadPresetButton.setButtonText ("LOAD");
+    savePresetButton.setButtonText ("SAVE");
+    loadPresetButton.onClick = [this] { loadPreset(); };
+    savePresetButton.onClick = [this] { savePreset(); };
+
+    configureLabel (tapCountLabel, "TAP COUNT");
     configureLabel (feedbackLabel, "FEEDBACK");
     configureLabel (feedbackHighCutLabel, "FB HIGH CUT");
     configureLabel (dryLabel, "DRY");
     configureLabel (wetLabel, "WET");
     configureLabel (timeModeLabel, "TIME MODE");
 
-    tapCountSlider.setSliderStyle (juce::Slider::IncDecButtons);
-    tapCountSlider.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 46, 22);
+    tapCountSlider.setName ("tapCountBar");
+    tapCountSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    tapCountSlider.setRange (1.0, 8.0, 1.0);
+    tapCountSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    tapCountSlider.setLookAndFeel (topControlsLookAndFeel.get());
     addAndMakeVisible (tapCountSlider);
 
     for (auto* slider : { &feedbackSlider, &feedbackHighCutSlider,
@@ -886,10 +1300,21 @@ IXMultitapDelayAudioProcessorEditor::IXMultitapDelayAudioProcessorEditor (
     {
         slider->setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
         slider->setTextBoxStyle (juce::Slider::TextBoxBelow, false, 72, 20);
+        slider->setRotaryParameters (
+            juce::MathConstants<float>::pi * 1.25f,
+            juce::MathConstants<float>::pi * 2.75f,
+            true);
+        slider->setLookAndFeel (topControlsLookAndFeel.get());
         slider->setColour (juce::Slider::rotarySliderFillColourId,
                            juce::Colour (0xffa7966e));
         slider->setColour (juce::Slider::thumbColourId,
                            juce::Colour (0xffd4c18d));
+        slider->setColour (juce::Slider::textBoxTextColourId,
+                           juce::Colour (0xffcbd0d8));
+        slider->setColour (juce::Slider::textBoxBackgroundColourId,
+                           juce::Colours::transparentBlack);
+        slider->setColour (juce::Slider::textBoxOutlineColourId,
+                           juce::Colours::transparentBlack);
         addAndMakeVisible (*slider);
     }
 
@@ -922,25 +1347,154 @@ IXMultitapDelayAudioProcessorEditor::IXMultitapDelayAudioProcessorEditor (
 
 IXMultitapDelayAudioProcessorEditor::~IXMultitapDelayAudioProcessorEditor() = default;
 
+juce::File IXMultitapDelayAudioProcessorEditor::getPresetDirectory() const
+{
+    return juce::File::getSpecialLocation (
+               juce::File::userApplicationDataDirectory)
+        .getChildFile ("IXMultitapDelay")
+        .getChildFile ("Presets");
+}
+
+void IXMultitapDelayAudioProcessorEditor::savePreset()
+{
+    auto directory = getPresetDirectory();
+    directory.createDirectory();
+
+    auto suggestedName = presetNameLabel.getText().trim();
+    if (suggestedName.isEmpty() || suggestedName == "SAVE FAILED"
+        || suggestedName == "INVALID PRESET")
+        suggestedName = "New Preset";
+
+    presetFileChooser = std::make_unique<juce::FileChooser> (
+        "Save IX Multitap Delay Preset",
+        directory.getChildFile (suggestedName).withFileExtension ("ixp"),
+        "*.ixp", true, false, this);
+
+    const int flags = juce::FileBrowserComponent::saveMode
+        | juce::FileBrowserComponent::canSelectFiles
+        | juce::FileBrowserComponent::warnAboutOverwriting;
+
+    presetFileChooser->launchAsync (
+        flags,
+        [safeThis = juce::Component::SafePointer<IXMultitapDelayAudioProcessorEditor> (this)]
+        (const juce::FileChooser& chooser)
+        {
+            if (safeThis == nullptr)
+                return;
+
+            auto file = chooser.getResult();
+            if (file == juce::File())
+                return;
+
+            file = file.withFileExtension ("ixp");
+            auto state = safeThis->audioProcessor.getAPVTS().copyState();
+            state.setProperty ("presetFormatVersion", 1, nullptr);
+            state.setProperty ("presetName",
+                               file.getFileNameWithoutExtension(), nullptr);
+
+            const auto xml = state.createXml();
+            const bool saved = xml != nullptr
+                && file.replaceWithText (xml->toString());
+            safeThis->presetNameLabel.setText (
+                saved ? file.getFileNameWithoutExtension() : "SAVE FAILED",
+                juce::dontSendNotification);
+        });
+}
+
+void IXMultitapDelayAudioProcessorEditor::loadPreset()
+{
+    auto directory = getPresetDirectory();
+    directory.createDirectory();
+
+    presetFileChooser = std::make_unique<juce::FileChooser> (
+        "Load IX Multitap Delay Preset", directory,
+        "*.ixp", true, false, this);
+
+    const int flags = juce::FileBrowserComponent::openMode
+        | juce::FileBrowserComponent::canSelectFiles;
+
+    presetFileChooser->launchAsync (
+        flags,
+        [safeThis = juce::Component::SafePointer<IXMultitapDelayAudioProcessorEditor> (this)]
+        (const juce::FileChooser& chooser)
+        {
+            if (safeThis == nullptr)
+                return;
+
+            const auto file = chooser.getResult();
+            if (file == juce::File())
+                return;
+
+            const auto xml = juce::XmlDocument::parse (file);
+            auto& apvts = safeThis->audioProcessor.getAPVTS();
+            if (xml == nullptr || ! xml->hasTagName (apvts.state.getType()))
+            {
+                safeThis->presetNameLabel.setText ("INVALID PRESET",
+                                                   juce::dontSendNotification);
+                return;
+            }
+
+            auto restoredState = juce::ValueTree::fromXml (*xml);
+            const auto presetName = restoredState.getProperty (
+                "presetName", file.getFileNameWithoutExtension()).toString();
+            apvts.replaceState (restoredState);
+            safeThis->presetNameLabel.setText (presetName,
+                                               juce::dontSendNotification);
+        });
+}
+
 void IXMultitapDelayAudioProcessorEditor::configureLabel (
     juce::Label& label, const juce::String& text)
 {
     label.setText (text, juce::dontSendNotification);
-    label.setColour (juce::Label::textColourId, juce::Colour (0xffb8bec7));
-    label.setJustificationType (juce::Justification::centredLeft);
+    label.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+    label.setColour (juce::Label::textColourId, juce::Colour (0xff939ba7));
+    label.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (label);
 }
 
 void IXMultitapDelayAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0e1116));
+
+    auto headerPanel = juce::Rectangle<float> (
+        252.0f, 14.0f,
+        juce::jmax (0.0f, static_cast<float> (getWidth()) - 272.0f),
+        118.0f);
+    g.setColour (juce::Colour (0xff151920));
+    g.fillRoundedRectangle (headerPanel, 10.0f);
+    g.setColour (juce::Colour (0xff2c333e));
+    g.drawRoundedRectangle (headerPanel, 10.0f, 1.0f);
+
+    const float columnWidth = headerPanel.getWidth() / 6.0f;
+    g.setColour (juce::Colour (0xff303743).withAlpha (0.65f));
+    for (int column = 1; column < 6; ++column)
+    {
+        const float x = headerPanel.getX()
+            + columnWidth * static_cast<float> (column);
+        g.drawVerticalLine (juce::roundToInt (x),
+                            headerPanel.getY() + 12.0f,
+                            headerPanel.getBottom() - 12.0f);
+    }
 }
 
 void IXMultitapDelayAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds().reduced (20);
     auto top = bounds.removeFromTop (112);
-    titleLabel.setBounds (top.removeFromLeft (238).removeFromTop (38));
+    auto titleColumn = top.removeFromLeft (238);
+    titleLabel.setBounds (titleColumn.removeFromTop (38));
+
+    auto presetArea = titleColumn.reduced (2, 0);
+    presetArea.removeFromRight (12);
+    presetCaptionLabel.setBounds (presetArea.removeFromTop (14));
+    presetNameLabel.setBounds (presetArea.removeFromTop (25));
+    presetArea.removeFromTop (4);
+    auto presetButtons = presetArea.removeFromTop (24);
+    const int presetButtonWidth = (presetButtons.getWidth() - 4) / 2;
+    loadPresetButton.setBounds (presetButtons.removeFromLeft (presetButtonWidth));
+    presetButtons.removeFromLeft (4);
+    savePresetButton.setBounds (presetButtons);
 
     auto controls = top;
     const int controlWidth = controls.getWidth() / 6;
@@ -949,19 +1503,22 @@ void IXMultitapDelayAudioProcessorEditor::resized()
                             juce::Label& label,
                             juce::Component& control)
     {
-        label.setBounds (area.removeFromTop (20));
-        control.setBounds (area.reduced (4, 0));
+        label.setBounds (area.removeFromTop (22));
+        control.setBounds (area.reduced (7, 1).translated (0, -5));
     };
 
-    placeControl (controls.removeFromLeft (controlWidth), tapCountLabel, tapCountSlider);
+    auto tapCountArea = controls.removeFromLeft (controlWidth);
+    tapCountLabel.setBounds (tapCountArea.removeFromTop (22));
+    tapCountSlider.setBounds (tapCountArea.reduced (1, 1));
     placeControl (controls.removeFromLeft (controlWidth), feedbackLabel, feedbackSlider);
     placeControl (controls.removeFromLeft (controlWidth), feedbackHighCutLabel,
                   feedbackHighCutSlider);
     placeControl (controls.removeFromLeft (controlWidth), dryLabel, drySlider);
     placeControl (controls.removeFromLeft (controlWidth), wetLabel, wetSlider);
-    timeModeLabel.setBounds (controls.removeFromTop (20));
-    timeModeToggle->setBounds (controls.withSizeKeepingCentre (
-        juce::jmin (156, controls.getWidth() - 8), 30));
+    timeModeLabel.setBounds (controls.removeFromTop (22));
+    auto modeControlArea = controls.removeFromTop (70);
+    timeModeToggle->setBounds (modeControlArea.withSizeKeepingCentre (
+        juce::jmin (156, modeControlArea.getWidth() - 8), 30));
 
     bounds.removeFromTop (6);
     timeline->setBounds (bounds);

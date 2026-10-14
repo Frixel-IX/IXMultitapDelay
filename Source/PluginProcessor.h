@@ -70,6 +70,9 @@ public:
         return static_cast<float> (maxDelayTimeSeconds * 1000.0);
     }
 
+    float consumeTapVisualLevel (int tapIndex, int channel) noexcept;
+    int pullWetWaveformSamples (float* destination, int maximumSamples) noexcept;
+
 
 private:
     //==============================================================================
@@ -208,6 +211,12 @@ private:
     double currentSampleRate = 44100.0;
     std::atomic<double> currentBpmForUI { 120.0 };
     std::array<float, 2> feedbackFilterStates {};
+
+    static constexpr int visualWaveformFifoSize = 4096;
+    std::array<std::array<std::atomic<float>, maxNumTaps>, 2> tapVisualLevels {};
+    std::array<float, visualWaveformFifoSize> wetWaveformFifoBuffer {};
+    juce::AbstractFifo wetWaveformFifo { visualWaveformFifoSize };
+    int wetWaveformDecimationCounter = 0;
 
     juce::SmoothedValue<float> smoothedFeedback;
     juce::SmoothedValue<float> smoothedFeedbackHighCut;

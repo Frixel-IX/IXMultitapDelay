@@ -79,6 +79,38 @@ IXMultitapDelayAudioProcessor::IXMultitapDelayAudioProcessor()
 IXMultitapDelayAudioProcessor::~IXMultitapDelayAudioProcessor()
 {
 }
+
+float IXMultitapDelayAudioProcessor::consumeTapVisualLevel (
+    int tapIndex, int channel) noexcept
+{
+    if (! juce::isPositiveAndBelow (tapIndex, maxNumTaps)
+        || ! juce::isPositiveAndBelow (channel, 2))
+        return 0.0f;
+
+    return tapVisualLevels[static_cast<size_t> (channel)]
+                          [static_cast<size_t> (tapIndex)]
+                              .exchange (0.0f, std::memory_order_relaxed);
+}
+
+int IXMultitapDelayAudioProcessor::pullWetWaveformSamples (
+    float* destination, int maximumSamples) noexcept
+{
+    if (destination == nullptr || maximumSamples <= 0)
+        return 0;
+
+    int start1 = 0;
+    int size1 = 0;
+    int start2 = 0;
+    int size2 = 0;
+    wetWaveformFifo.prepareToRead (maximumSamples,
+                                   start1, size1, start2, size2);
+    std::copy_n (wetWaveformFifoBuffer.begin() + start1,
+                 size1, destination);
+    std::copy_n (wetWaveformFifoBuffer.begin() + start2,
+                 size2, destination + size1);
+    wetWaveformFifo.finishedRead (size1 + size2);
+    return size1 + size2;
+}
 juce::AudioProcessorValueTreeState::ParameterLayout
 
 IXMultitapDelayAudioProcessor::createParameterLayout()
@@ -100,8 +132,9 @@ IXMultitapDelayAudioProcessor::createParameterLayout()
 
         const auto tapNumber = juce::String (tapIndex + 1);
         const float defaultTimeMs = 250.0f * static_cast<float> (tapIndex + 1);
-        const float defaultGainDb = -6.0f
-            - 3.0f * static_cast<float> (tapIndex);
+        const float defaultGainDb = juce::jmax (
+            -24.0f,
+            -6.0f - 3.0f * static_cast<float> (tapIndex));
 
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { makeTapParameterId (tapIndex, "Time"), 1 },
@@ -113,7 +146,7 @@ IXMultitapDelayAudioProcessor::createParameterLayout()
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { makeTapParameterId (tapIndex, "Gain"), 1 },
             "Tap " + tapNumber + " Gain",
-            juce::NormalisableRange<float> { -60.0f, 0.0f, 0.1f },
+            juce::NormalisableRange<float> { -24.0f, 0.0f, 0.1f },
             defaultGainDb,
             "dB"));
 
@@ -266,6 +299,11 @@ void IXMultitapDelayAudioProcessor::prepareToPlay (double sampleRate, int sample
     delayBuffer.clear();
     delayWritePosition = 0;
     wasTransportPlaying = false;
+    wetWaveformFifo.reset();
+    wetWaveformDecimationCounter = 0;
+    for (auto& channelLevels : tapVisualLevels)
+        for (auto& level : channelLevels)
+            level.store (0.0f, std::memory_order_relaxed);
 
     constexpr double smoothingTimeSeconds = 0.05;
 
@@ -510,6 +548,7 @@ void IXMultitapDelayAudioProcessor::processBlock (
     std::array<float, maxNumTaps> readFraction {};
     std::array<float, maxNumTaps> tapGain {};
     std::array<float, maxNumTaps> tapPan {};
+    std::array<std::array<float, maxNumTaps>, 2> tapBlockPeaks {};
 
     for (int sample = 0;
          sample < buffer.getNumSamples();
@@ -594,8 +633,12 @@ void IXMultitapDelayAudioProcessor::processBlock (
         {
             if (totalNumInputChannels == 1)
             {
-                wetSamples[0] += delayedSamples[0][tapIndex]
+                const float contribution = delayedSamples[0][tapIndex]
                     * tapGain[tapIndex];
+                wetSamples[0] += contribution;
+                tapBlockPeaks[0][tapIndex] = juce::jmax (
+                    tapBlockPeaks[0][tapIndex],
+                    std::abs (contribution * currentWetGain));
                 continue;
             }
 
@@ -607,12 +650,42 @@ void IXMultitapDelayAudioProcessor::processBlock (
             const float leftPanGain = pan <= 0.0f ? 1.0f : 1.0f - pan;
             const float rightPanGain = pan >= 0.0f ? 1.0f : 1.0f + pan;
 
-            wetSamples[0] += monoDelayedSample
+            const float leftContribution = monoDelayedSample
                 * tapGain[tapIndex]
                 * leftPanGain;
-            wetSamples[1] += monoDelayedSample
+            const float rightContribution = monoDelayedSample
                 * tapGain[tapIndex]
                 * rightPanGain;
+            wetSamples[0] += leftContribution;
+            wetSamples[1] += rightContribution;
+            tapBlockPeaks[0][tapIndex] = juce::jmax (
+                tapBlockPeaks[0][tapIndex],
+                std::abs (leftContribution * currentWetGain));
+            tapBlockPeaks[1][tapIndex] = juce::jmax (
+                tapBlockPeaks[1][tapIndex],
+                std::abs (rightContribution * currentWetGain));
+        }
+
+        if (++wetWaveformDecimationCounter >= 32)
+        {
+            wetWaveformDecimationCounter = 0;
+            const float wetWaveformSample = currentWetGain
+                * (totalNumInputChannels > 1
+                    ? 0.5f * (wetSamples[0] + wetSamples[1])
+                    : wetSamples[0]);
+            int start1 = 0;
+            int size1 = 0;
+            int start2 = 0;
+            int size2 = 0;
+            wetWaveformFifo.prepareToWrite (1,
+                                            start1, size1, start2, size2);
+            if (size1 > 0)
+                wetWaveformFifoBuffer[static_cast<size_t> (start1)]
+                    = wetWaveformSample;
+            else if (size2 > 0)
+                wetWaveformFifoBuffer[static_cast<size_t> (start2)]
+                    = wetWaveformSample;
+            wetWaveformFifo.finishedWrite (size1 + size2);
         }
 
         for (int channel = 0; channel < totalNumInputChannels; ++channel)
@@ -652,6 +725,25 @@ void IXMultitapDelayAudioProcessor::processBlock (
 
         if (delayWritePosition >= delayBufferSize)
             delayWritePosition = 0;
+    }
+
+    for (int channel = 0; channel < 2; ++channel)
+    {
+        for (int tapIndex = 0; tapIndex < activeTapCount; ++tapIndex)
+        {
+            auto& destination = tapVisualLevels[static_cast<size_t> (channel)]
+                                               [static_cast<size_t> (tapIndex)];
+            const float newPeak = tapBlockPeaks[static_cast<size_t> (channel)]
+                                               [static_cast<size_t> (tapIndex)];
+            float existing = destination.load (std::memory_order_relaxed);
+            while (newPeak > existing
+                   && ! destination.compare_exchange_weak (
+                       existing, newPeak,
+                       std::memory_order_relaxed,
+                       std::memory_order_relaxed))
+            {
+            }
+        }
     }
 }
 
