@@ -4,7 +4,7 @@ IXMultitapDelay is a JUCE based delay plugin for music composers and sound desig
 
 The upper channel offers you 8 individual taps whose _timing_, _humanize range_, and _panning_ you could freely adjust; and the lower one allows gain enveloping.
 
-Play with it and save your layouts! Presets are saved as .ixp files in [your application data directory]/IXMultitapDelay/Presets
+Play with it and save your layouts! Presets are saved as .ixp files in (your application data directory)/IXMultitapDelay/Presets
 
 **Downloading the VST3 Version**
 =====================
@@ -45,11 +45,11 @@ In Xcode, select the VST3 scheme, use the Release build configuration, and build
 
 Alternatively, run this command from the repository root:
 
-xcodebuild \
-  -project Builds/MacOSX/IXMultitapDelay.xcodeproj \
-  -target "IXMultitapDelay - VST3" \
-  -configuration Release \
-  build
+    xcodebuild \
+     -project Builds/MacOSX/IXMultitapDelay.xcodeproj \
+     -target "IXMultitapDelay - VST3" \
+     -configuration Release \
+     build
 
 With the default output settings, the finished plugin is located at:
 
